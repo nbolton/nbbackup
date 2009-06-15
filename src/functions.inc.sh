@@ -1,5 +1,79 @@
 # Include file, used by nbbackup.sh
 
+PID_BASE=/var/run/nbbackup
+PID=$PID_BASE.pid
+RSYNC_PID=$PID_BASE.rsync.pid
+
+function setupTrap {
+
+  # Exit with error on INT or TERM
+  trap "safeExit 1" SIGINT SIGTERM
+
+  # Exit with no error, on normal EXIT
+  trap safeExit EXIT
+
+} # setupTrap
+
+function removeTrap {
+
+  trap - SIGINT SIGTERM EXIT
+
+} # removeTrap
+
+function lockProcess {
+
+  if [ -f $PID ]; then
+    echo "Already running or improper exit on PID: `cat $PID`"
+    echo "Remove $PID to continue."
+    exit 1
+  fi
+
+  echo $$ > $PID
+
+} # lockProcess
+
+function unlockProcess {
+
+  rm $PID
+
+} # unlockProcess
+
+function cleanup {
+
+  if [ $(mount | grep $TARGET | wc -l) != 0 ]; then
+    # Ensure backup drive not left mounted.
+    unmountBackup
+  fi
+
+  if [ -f $RSYNC_PID ]; then
+    echo "Killing rsync process..."
+    kill `cat $RSYNC_PID`
+    rm $RSYNC_PID
+  fi
+
+} # cleanup
+
+function safeExit {
+
+  if [ $1 > 0 ]; then
+    echo "Exiting with code: $1"
+    cleanup
+  fi
+
+  # Clean up exit.
+  unlockProcess
+  removeTrap
+
+  if [ $1 > 0 ]; then
+    echo "Done, but with errors."
+  else
+    echo "Done."
+  fi
+
+  exit $1
+
+} # safeExit
+
 function checkRoot {
 
   if [ $(whoami) != "root" ]; then
@@ -12,7 +86,10 @@ function checkRoot {
 function testDrive {
 
   mountBackup
+  if [ "$?" != 0 ]; then exit $?; fi
+
   unmountBackup
+  if [ "$?" != 0 ]; then exit $?; fi  
 
 } # testDrive
 
@@ -78,7 +155,7 @@ function unmountBackup {
 
   if [ $? != 0 ]; then
     echo "Unmount failed, aborting."
-    exit 1
+    return 1
   fi
 
   rm -r $TARGET
@@ -130,7 +207,13 @@ function filesBackup {
   mountBackup
  
   echo "Syncronizing storage drive with backup drive..."
-  rsync -av --delete $RS_SOURCE $RS_TARGET
+  rsync -av --delete $RS_SOURCE $RS_TARGET &
+
+  # Store pid so we can kill it on trap
+  echo $! > $RSYNC_PID
+
+  echo "Waiting for rsync to finish..."
+  wait
 
   unmountBackup
 
@@ -149,9 +232,12 @@ function printUsage {
 
 } # printUsage
 
+
 function main {
 
   checkRoot
+  setupTrap
+  lockProcess
 
   while getopts "cifmuth" param; do
     case $param in
