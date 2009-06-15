@@ -5,6 +5,7 @@ ETC=/etc/$NAME
 SHARE=/usr/share/$NAME
 BIN=/usr/bin/nbbackup
 CONFIG=$ETC/nbbackup.conf
+SETUP_DIR=`dirname "$0"`
 
 function checkRoot {
 
@@ -24,14 +25,14 @@ function install {
   fi
 
   echo -e "\nCopying config files..."
-  cp -vf conf/* $ETC/ 
+  cp -vf $SETUP_DIR/conf/* $ETC/ 
 
   if [ ! -d $SHARE ]; then
     mkdir $SHARE
   fi
 
   echo -e "\nCopying script files..."
-  cp -vf src/* $SHARE/
+  cp -vf $SETUP_DIR/src/* $SHARE/
 
   echo -e "\nCreating bin link..."
   ln -sfv $SHARE/nbbackup.sh $BIN
