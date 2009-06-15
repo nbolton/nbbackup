@@ -45,7 +45,7 @@ function mountBackup {
 
   selectDrive
 
-  if [ $CHECK ]; then
+  if [ $CHECK == 1 ]; then
     echo "Checking backup drive..."
     fsck -aMT /dev/disk/by-id/$DRIVE
   
@@ -158,9 +158,9 @@ function main {
       c) CHECK=1 ;;
       i) ARG_IMAGE=1 ;;
       f) ARG_FILES=1 ;;
-      m) mountBackup; exit 0 ;;
-      u) unmountBackup; exit 0 ;;
-      t) testDrive; exit 0 ;;
+      m) ARG_MOUNT=1 ;;
+      u) ARG_UNMOUNT=1; ;;
+      t) ARG_TEST=1; ;;
       *) printUsage; exit 0 ;;
     esac
   done
@@ -172,10 +172,16 @@ function main {
     exit 0
   fi
 
-  if [ $ARG_IMAGE ]; then
+  if [ $ARG_IMAGE == 1 ]; then
     imageBackup
-  elif [ $ARG_FILES ]; then
+  elif [ $ARG_FILES == 1 ]; then
     filesBackup
+  elif [ $ARG_MOUNT == 1 ]; then
+    mountBackup
+  elif [ $ARG_UNMOUNT == 1 ]; then
+    unmountBackup
+  elif [ $ARG_TEST == 1 ]; then
+    testDrive
   fi
 
   exit 0
