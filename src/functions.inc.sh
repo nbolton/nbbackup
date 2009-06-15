@@ -55,8 +55,6 @@ function mountBackup {
     fi
   fi
 
-  exit 1;
-
   if [ -d $TARGET ]; then
     echo "Removing exiting mount target..."
     rm -rv $TARGET
