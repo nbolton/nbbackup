@@ -4,7 +4,7 @@ NAME=nbbackup
 ETC=/etc/$NAME
 SHARE=/usr/share/$NAME
 CONFIG=$ETC/$NAME.conf
-FUNCTIONS=$SHARE/functions.inc
+FUNCTIONS=$SHARE/functions.inc.sh
 
 echo "Nick Bolton's Backup Script"
 echo "Copyright (C)  Nick Bolton 2009"
