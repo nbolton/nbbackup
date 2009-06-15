@@ -172,15 +172,15 @@ function main {
     exit 0
   fi
 
-  if [ $ARG_IMAGE == 1 ]; then
+  if [ $ARG_IMAGE ]; then
     imageBackup
-  elif [ $ARG_FILES == 1 ]; then
+  elif [ $ARG_FILES ]; then
     filesBackup
-  elif [ $ARG_MOUNT == 1 ]; then
+  elif [ $ARG_MOUNT ]; then
     mountBackup
-  elif [ $ARG_UNMOUNT == 1 ]; then
+  elif [ $ARG_UNMOUNT ]; then
     unmountBackup
-  elif [ $ARG_TEST == 1 ]; then
+  elif [ $ARG_TEST ]; then
     testDrive
   fi
 
