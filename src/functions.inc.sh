@@ -55,7 +55,13 @@ function mountBackup {
     fi
   fi
 
+  if [ -d $TARGET ]; then
+    echo "Removing exiting mount target..."
+    rm -rv $TARGET
+  fi
+
   echo "Mounting backup drive..."
+  mkdir $TARGET
   mount /dev/disk/by-id/$DRIVE $TARGET
   
   if [ $? != 0 ]; then
@@ -69,6 +75,13 @@ function unmountBackup {
 
   echo "Unmounting backup drive..."
   umount -l $TARGET
+
+  if [ $? != 0 ]; then
+    echo "Unmount failed, aborting."
+    exit 1
+  fi
+
+  rm -r $TARGET
 
 } #unmountBackup
 
