@@ -1,4 +1,4 @@
-# Include file, used by /usr/share/backup/backup.sh
+# Include file, used by nbbackup.sh
 
 function checkRoot {
 
@@ -45,7 +45,7 @@ function mountBackup {
 
   selectDrive
 
-  if [ CHECK == TRUE ]; then
+  if [ $CHECK ]; then
     echo "Checking backup drive..."
     fsck -aMT /dev/disk/by-id/$DRIVE
   
@@ -54,6 +54,8 @@ function mountBackup {
       exit 1
     fi
   fi
+
+  exit 1;
 
   if [ -d $TARGET ]; then
     echo "Removing exiting mount target..."
@@ -155,9 +157,9 @@ function main {
 
   while getopts "cifmuth" param; do
     case $param in
-      c) CHECK=TRUE ;;
-      i) imageBackup; exit 0 ;;
-      f) filesBackup; exit 0 ;;
+      c) CHECK=1 ;;
+      i) ARG_IMAGE=1 ;;
+      f) ARG_FILES=1 ;;
       m) mountBackup; exit 0 ;;
       u) unmountBackup; exit 0 ;;
       t) testDrive; exit 0 ;;
@@ -171,5 +173,13 @@ function main {
     printUsage
     exit 0
   fi
+
+  if [ $ARG_IMAGE ]; then
+    imageBackup
+  elif [ $ARG_FILES ]; then
+    filesBackup
+  fi
+
+  exit 0
 
 } #main
