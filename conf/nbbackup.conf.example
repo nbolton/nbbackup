@@ -6,9 +6,6 @@ TARGET=/tmp/nbbackup-target
 # File that contains the backup drive names
 DRIVE_FILE=/etc/nbbackup/drives.conf
 
-# Do not run fsck by default
-CHECK=0 # 0 or 1
-
 # Services to disable (for partimage)
 SAMBA=/etc/init.d/samba
 NFS=/etc/init.d/nfs-kernel-server
