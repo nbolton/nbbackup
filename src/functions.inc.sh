@@ -240,15 +240,15 @@ function filesBackup {
 
 function printUsage {
 
-  echo "$0 [[-c]-i|-f|-m|-u|-t]|[-h] [-b[-l]]"
-  echo "-c   Check and auto-fix backup drive"
-  echo "-i   Backup using partimage (overwrites)"
+  echo "$0 [OPTIONS...]"
   echo "-f   Backup using rsync (exact mirror)"
+  echo "-i   Backup using partimage (overwrites)"
   echo "-m   Just mount backup drive"
   echo "-u   Unmount backup drive (if mounted)"
   echo "-t   Test for backup drives"
+  echo "-c   Check and auto-fix backup drive"
   echo "-b   Run in background (like a daemon)"
-  echo "-h   Shows help / usage (default)"
+  echo "-h   Shows help/usage (default)"
 
 } # printUsage
 
@@ -259,7 +259,7 @@ function main {
   setupTrap
   lockProcess
 
-  while getopts "cifmutblh-:" param; do
+  while getopts "fimutcbh-:" param; do
     case $param in
       c) CHECK=1 ;;
       i) ARG_IMAGE=1 ;;
