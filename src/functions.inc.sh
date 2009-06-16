@@ -4,6 +4,11 @@ PID_BASE=/var/run/nbbackup
 PID=$PID_BASE.pid
 RSYNC_PID=$PID_BASE.rsync.pid
 
+# Log not set in config? Use default.
+if [ "$LOG" == "" ]; then
+  LOG=/var/log/nbbackup.log
+fi
+
 function setupTrap {
 
   # Exit with error on INT or TERM
@@ -25,6 +30,9 @@ function lockProcess {
   if [ -f $PID ]; then
     echo "Already running or improper exit on PID: `cat $PID`"
     echo "Remove $PID to continue."
+    
+    # Remove trap and exit (so safeExit not called)
+    removeTrap
     exit 1
   fi
 
@@ -40,15 +48,26 @@ function unlockProcess {
 
 function cleanup {
 
+  # First, stop rsync from using backup drive.
+  if [ -f $RSYNC_PID ]; then
+
+    RSYNC_PID_VALUE=`cat $RSYNC_PID`
+
+    echo "Killing rsync process ($RSYNC_PID_VALUE)..."
+    kill $RSYNC_PID_VALUE
+  
+    while ps -p $RSYNC_PID_VALUE > /dev/null; do
+      echo "Waiting for rsync to die..."
+      sleep 1
+    done
+
+    rm $RSYNC_PID
+  fi
+
+  # After rsync has been killed, now unmount.
   if [ $(mount | grep $TARGET | wc -l) != 0 ]; then
     # Ensure backup drive not left mounted.
     unmountBackup
-  fi
-
-  if [ -f $RSYNC_PID ]; then
-    echo "Killing rsync process..."
-    kill `cat $RSYNC_PID`
-    rm $RSYNC_PID
   fi
 
 } # cleanup
@@ -86,10 +105,10 @@ function checkRoot {
 function testDrive {
 
   mountBackup
-  if [ "$?" != 0 ]; then exit $?; fi
+  if [ "$?" != 0 ]; then exit 1; fi
 
   unmountBackup
-  if [ "$?" != 0 ]; then exit $?; fi  
+  if [ "$?" != 0 ]; then exit 1; fi  
 
 } # testDrive
 
@@ -124,7 +143,7 @@ function mountBackup {
 
   if [ $CHECK == 1 ]; then
     echo "Checking backup drive..."
-    fsck -aMT /dev/disk/by-id/$DRIVE
+    fsck -aMT /dev/disk/by-id/$DRIVE 2>&1 >> $LOG
   
     if [ $? != 0 ]; then
       echo "Check failed, aborting."
@@ -206,8 +225,8 @@ function filesBackup {
 
   mountBackup
  
-  echo "Syncronizing storage drive with backup drive..."
-  rsync -av --delete $RS_SOURCE $RS_TARGET &
+  echo "Starting files backup using rsync..."
+  rsync -av --delete $RS_SOURCE $RS_TARGET 2>&1 >> $LOG & > /dev/null
 
   # Store pid so we can kill it on trap
   echo $! > $RSYNC_PID
@@ -221,14 +240,15 @@ function filesBackup {
 
 function printUsage {
 
-  echo "$0 [-c] ..."
-  echo "-c	Check and auto-fix backup drive"
-  echo "-i	Backup using partimage (overwrites)"
-  echo "-f 	Backup using rsync (exact mirror)"
-  echo "-m	Just mount backup drive"
-  echo "-u	Unmount backup drive (if mounted)"
-  echo "-t	Test for backup drives"
-  echo "-h	Shows help / usage (default)"
+  echo "$0 [[-c]-i|-f|-m|-u|-t]|[-h] [-b[-l]]"
+  echo "-c   Check and auto-fix backup drive"
+  echo "-i   Backup using partimage (overwrites)"
+  echo "-f   Backup using rsync (exact mirror)"
+  echo "-m   Just mount backup drive"
+  echo "-u   Unmount backup drive (if mounted)"
+  echo "-t   Test for backup drives"
+  echo "-b   Run in background (like a daemon)"
+  echo "-h   Shows help / usage (default)"
 
 } # printUsage
 
@@ -239,23 +259,56 @@ function main {
   setupTrap
   lockProcess
 
-  while getopts "cifmuth" param; do
+  while getopts "cifmutblh-:" param; do
     case $param in
       c) CHECK=1 ;;
       i) ARG_IMAGE=1 ;;
       f) ARG_FILES=1 ;;
       m) ARG_MOUNT=1 ;;
-      u) ARG_UNMOUNT=1; ;;
-      t) ARG_TEST=1; ;;
+      u) ARG_UNMOUNT=1 ;;
+      t) ARG_TEST=1 ;;
+      b) ARG_BACKGROUND=1 ;;
+      -) ;;
       *) printUsage; exit 0 ;;
     esac
   done
 
   # Show usage when no args.
-  if [ $# -ne 1 ]; then
+  if [ $# == 0 ]; then
     echo "No args specified, showing usage."
     printUsage
     exit 0
+  fi
+
+  for ARG in "$@"; do
+    if [ "$ARG" == "--forked" ]; then
+      ARG_FORKED=1
+    fi
+    if [ "$ARG" == "--debug-sleep" ]; then
+      ARG_DEBUG_SLEEP=1
+    fi
+  done
+
+  if [ $ARG_BACKGROUND ] && [ ! $ARG_FORKED ]; then
+
+    # Remove trap and pid file before re-launching.
+    removeTrap
+    unlockProcess
+
+    # Re-launch with --forked to stop infinate loop.
+    CMD="$0 $@ --forked"
+    $CMD 2>&1 >> $LOG & > /dev/null
+
+    echo "Writing to log file: $LOG"
+    echo "Running in background with PID: $!"
+    exit 0
+  fi
+
+  # Handy for testing "run in background".
+  if [ $ARG_DEBUG_SLEEP ]; then
+    echo "Sleeping for 10 seconds..."
+    sleep 10
+    exit 1
   fi
 
   if [ $ARG_IMAGE ]; then
