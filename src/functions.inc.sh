@@ -1,5 +1,12 @@
 # Include file, used by nbbackup.sh
 
+MOUNT=/bin/mount
+UMOUNT=/bin/umount
+FSCK=/sbin/fsck
+RSYNC=/usr/bin/rsync
+PARTIMAGE=/usr/sbin/partimage
+FUSER=/bin/fuser
+
 PID_BASE=/var/run/nbbackup
 PID=$PID_BASE.pid
 RSYNC_PID=$PID_BASE.rsync.pid
@@ -84,9 +91,9 @@ function safeExit {
   removeTrap
 
   if [ $1 > 0 ]; then
-    echo "Done, but with errors."
+    echo "Finished, but with errors."
   else
-    echo "Done."
+    echo "Finished."
   fi
 
   exit $1
@@ -136,14 +143,14 @@ function mountBackup {
 
   if [ $(mount | grep $TARGET | wc -l) != 0 ]; then
     echo "Unmounting existing backup drive..."
-    umount -l $TARGET
+    $UMOUNT -l $TARGET
   fi
 
   selectDrive
 
   if [ $CHECK == 1 ]; then
     echo "Checking backup drive..."
-    fsck -aMT /dev/disk/by-id/$DRIVE 2>&1 >> $LOG
+    $FSCK -aMT /dev/disk/by-id/$DRIVE >> $LOG 2>&1
   
     if [ $? != 0 ]; then
       echo "Check failed, aborting."
@@ -158,7 +165,7 @@ function mountBackup {
 
   echo "Mounting backup drive..."
   mkdir $TARGET
-  mount /dev/disk/by-id/$DRIVE $TARGET
+  $MOUNT /dev/disk/by-id/$DRIVE $TARGET
   
   if [ $? != 0 ]; then
     echo "Mount failed, aborting."
@@ -170,7 +177,7 @@ function mountBackup {
 function unmountBackup {
 
   echo "Unmounting backup drive..."
-  umount -l $TARGET
+  $UMOUNT -l $TARGET
 
   if [ $? != 0 ]; then
     echo "Unmount failed, aborting."
@@ -192,24 +199,24 @@ function imageBackup {
   echo "Wait for services to stop using storage..."
   sleep 5
 
-  if [ $(fuser -m $PI_DRIVE | wc -l) != 0 ]; then
+  if [ $($FUSER -m $PI_DRIVE | wc -l) != 0 ]; then
 
     echo "Cannot unmount storage drive, because it is in use."
-    fuser -m $PI_DRIVE
+    $FUSER -m $PI_DRIVE
     exit 1
 
   else
 
     echo "Unmount so partimage can copy..."
-    umount $PI_DRIVE
+    $UMOUNT $PI_DRIVE
 
     echo "Running partimage with options:"
     echo "  b (batch), d (no description), o (overwrite),"
     echo "  f3 (quit on success)"
-    partimage -bdo -f3 save $PI_DRIVE $PI_IMAGE
+    $PARTIMAGE -bdo -f3 save $PI_DRIVE $PI_IMAGE
 
     echo "Re-mounting storage..."
-    mount $PI_DRIVE $PI_REMOUNT
+    $MOUNT $PI_DRIVE $PI_REMOUNT
 
   fi # fuser
 
@@ -226,7 +233,7 @@ function filesBackup {
   mountBackup
  
   echo "Starting files backup using rsync..."
-  rsync -av --delete $RS_SOURCE $RS_TARGET 2>&1 >> $LOG & > /dev/null
+  $RSYNC -av --delete $RS_SOURCE $RS_TARGET >> $LOG 2>&1 &
 
   # Store pid so we can kill it on trap
   echo $! > $RSYNC_PID
@@ -248,18 +255,38 @@ function printUsage {
   echo "-t   Test for backup drives"
   echo "-c   Check and auto-fix backup drive"
   echo "-b   Run in background (like a daemon)"
+  echo "-k   Kill current running backup"
   echo "-h   Shows help/usage (default)"
 
 } # printUsage
 
+function killProcess {
+
+  # First, stop rsync from using backup drive.
+  if [ -f $PID ]; then
+
+    PID_VALUE=`cat $PID`
+
+    echo "Killing nbbackup process ($PID_VALUE)..."
+    kill $PID_VALUE
+  
+    while ps -p $PID_VALUE > /dev/null; do
+      echo "Waiting for nbbackup to die..."
+      sleep 2
+    done
+
+  else
+
+    echo "Cannot kill, PID file not found: $PID"
+    
+  fi
+
+
+} # killProcess
 
 function main {
 
-  checkRoot
-  setupTrap
-  lockProcess
-
-  while getopts "fimutcbh-:" param; do
+  while getopts "fimutcbkh-:" param; do
     case $param in
       c) CHECK=1 ;;
       i) ARG_IMAGE=1 ;;
@@ -268,6 +295,7 @@ function main {
       u) ARG_UNMOUNT=1 ;;
       t) ARG_TEST=1 ;;
       b) ARG_BACKGROUND=1 ;;
+	  k) ARG_KILL=1 ;;
       -) ;;
       *) printUsage; exit 0 ;;
     esac
@@ -289,20 +317,32 @@ function main {
     fi
   done
 
-  if [ $ARG_BACKGROUND ] && [ ! $ARG_FORKED ]; then
+  # From this point, user must be root.
+  checkRoot
 
-    # Remove trap and pid file before re-launching.
-    removeTrap
-    unlockProcess
+  # Kill then continue execution.
+  if [ $ARG_KILL ]; then
+    killProcess
+  fi
+
+  if [ $ARG_BACKGROUND ] && [ ! $ARG_FORKED ]; then
 
     # Re-launch with --forked to stop infinate loop.
     CMD="$0 $@ --forked"
-    $CMD 2>&1 >> $LOG & > /dev/null
+    $CMD >> $LOG 2>&1 &
 
     echo "Writing to log file: $LOG"
     echo "Running in background with PID: $!"
     exit 0
   fi
+
+  if [ $ARG_FORKED ]; then
+    echo "Running in background at time: `date`"
+  fi
+
+  # From this point, don't allow multiple instances.
+  setupTrap
+  lockProcess
 
   # Handy for testing "run in background".
   if [ $ARG_DEBUG_SLEEP ]; then
