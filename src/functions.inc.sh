@@ -22,7 +22,7 @@ function setupTrap {
   trap "safeExit 1" SIGINT SIGTERM
 
   # Exit with no error, on normal EXIT
-  trap safeExit EXIT
+  trap "safeExit 0" EXIT
 
 } # setupTrap
 
