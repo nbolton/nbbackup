@@ -81,7 +81,7 @@ function cleanup {
 
 function safeExit {
 
-  if [ $1 > 0 ]; then
+  if [ $1 -gt 0 ]; then
     echo "Exiting with code: $1"
     cleanup
   fi
@@ -90,7 +90,7 @@ function safeExit {
   unlockProcess
   removeTrap
 
-  if [ $1 > 0 ]; then
+  if [ $1 -gt 0 ]; then
     echo "Finished, but with errors."
   else
     echo "Finished."
