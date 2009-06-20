@@ -16,6 +16,18 @@ if [ "$LOG" == "" ]; then
   LOG=/var/log/nbbackup.log
 fi
 
+function printStartTime {
+
+  echo "Started at: `date`"
+
+} # printStartTime
+
+function printFinishTime {
+
+  echo "Finished at: `date`"
+
+} # printFinishTime
+
 function setupTrap {
 
   # Exit with error on INT or TERM
@@ -91,9 +103,7 @@ function safeExit {
   removeTrap
 
   if [ $1 -gt 0 ]; then
-    echo "Finished, but with errors."
-  else
-    echo "Finished."
+    echo "Errors have occured."
   fi
 
   exit $1
@@ -110,12 +120,16 @@ function checkRoot {
 } # checkRoot
 
 function testDrive {
+ 
+  printStartTime
 
   mountBackup
   if [ "$?" != 0 ]; then exit 1; fi
 
   unmountBackup
   if [ "$?" != 0 ]; then exit 1; fi  
+
+  printFinishTime
 
 } # testDrive
 
@@ -190,6 +204,7 @@ function unmountBackup {
 
 function imageBackup {
 
+  printStartTime
   mountBackup
 
   echo "Stopping services using storage drive..."
@@ -225,15 +240,23 @@ function imageBackup {
   $NFS start
 
   unmountBackup
+  printFinishTime
 
 } # imageBackup
 
 function filesBackup { 
 
+  printStartTime
   mountBackup
+
+  RS_ARGS="-av --delete"
+
+  if [ -f $RS_EX_FILE ]; then
+    RS_ARGS=$RS_ARGS" --exclude `cat $RS_EX_FILE`"
+  fi
  
-  echo "Starting files backup using rsync..."
-  $RSYNC -av --delete $RS_SOURCE $RS_TARGET >> $LOG 2>&1 &
+  echo "Starting file backup using rsync..."
+  $RSYNC $RS_ARGS $RS_SOURCE $RS_TARGET >> $LOG 2>&1 &
 
   # Store pid so we can kill it on trap
   echo $! > $RSYNC_PID
@@ -242,12 +265,13 @@ function filesBackup {
   wait
 
   unmountBackup
+  printFinishTime
 
 } # filesBackup
 
 function printUsage {
 
-  echo "$0 [OPTIONS...]"
+  echo "$0 [OPTIONS...] [-e /path/to/exclude.conf]"
   echo "-f   Backup using rsync (exact mirror)"
   echo "-i   Backup using partimage (overwrites)"
   echo "-m   Just mount backup drive"
@@ -256,6 +280,7 @@ function printUsage {
   echo "-c   Check and auto-fix backup drive"
   echo "-b   Run in background (like a daemon)"
   echo "-k   Kill current running backup"
+  echo "-e   Path to rsync exclusions file"
   echo "-h   Shows help/usage (default)"
 
 } # printUsage
@@ -286,7 +311,7 @@ function killProcess {
 
 function main {
 
-  while getopts "fimutcbkh-:" param; do
+  while getopts "fimutcbkhe:-:" param; do
     case $param in
       c) CHECK=1 ;;
       i) ARG_IMAGE=1 ;;
@@ -296,6 +321,7 @@ function main {
       t) ARG_TEST=1 ;;
       b) ARG_BACKGROUND=1 ;;
 	  k) ARG_KILL=1 ;;
+      e) RS_EX_FILE=$OPTARG ;;
       -) ;;
       *) printUsage; exit 0 ;;
     esac
@@ -320,11 +346,6 @@ function main {
   # From this point, user must be root.
   checkRoot
 
-  # Kill then continue execution.
-  if [ $ARG_KILL ]; then
-    killProcess
-  fi
-
   if [ $ARG_BACKGROUND ] && [ ! $ARG_FORKED ]; then
 
     # Re-launch with --forked to stop infinate loop.
@@ -336,13 +357,20 @@ function main {
     exit 0
   fi
 
-  if [ $ARG_FORKED ]; then
-    echo "Running in background at time: `date`"
+  # Kill then continue execution.
+  if [ $ARG_KILL ]; then
+    killProcess
   fi
 
   # From this point, don't allow multiple instances.
-  setupTrap
+  # Also, don't launch in background if already running,
+  # as this would append to the log file which isn't good.
   lockProcess
+
+  # Only setup the trap after lock is successful (the
+  # lock could cause an exit, and we don't want to bother
+  # doing a "safe exit".
+  setupTrap
 
   # Handy for testing "run in background".
   if [ $ARG_DEBUG_SLEEP ]; then
