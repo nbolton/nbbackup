@@ -6,6 +6,7 @@ SHARE=/usr/share/$NAME
 CONFIG=$ETC/$NAME.conf
 FUNCTIONS=$SHARE/functions.inc.sh
 
+echo
 echo "Nick Bolton's Backup Script"
 echo "Copyright (C)  Nick Bolton 2009"
 echo "http://code.google.com/p/nbbackup/"
